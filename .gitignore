@@ -3,3 +3,5 @@
 /lua_modules
 /.luarocks
 /test
+
+/*.rock

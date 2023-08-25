@@ -1,11 +1,11 @@
 package = "LuaXMLGenerator"
 version = "dev-1"
 source = {
-   url = "*** please add URL for source tarball, zip or repository here ***"
+   url = "https://github.com/Frityet/LuaXMLGenerator"
 }
 description = {
    summary = "DSL to generate XML/HTML",
-   homepage = "*** please enter a project homepage ***",
+   homepage = "https://github.com/Frityet/LuaXMLGenerator",
    license = "MIT"
 }
 dependencies = {

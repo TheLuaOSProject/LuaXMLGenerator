@@ -20,10 +20,17 @@ end
 ---@class xml-generator
 local export = {}
 
+---@class XML.Children
+---@field [integer] XML.Node | string | fun(): XML.Node
+
+---@class XML.AttributeTable : XML.Children
+---@field [string] string | boolean | number
+
 ---@class XML.Node
+---@operator call(XML.Children): XML.Node
 ---@field tag string
----@field children (XML.Node | string | fun(): XML.Node)[]
----@field attributes { [string] : (string | boolean) }
+---@field children XML.Children
+---@field attributes XML.AttributeTable
 
 ---quotes are allowed in text, not in attributes
 ---@param str string
@@ -62,7 +69,7 @@ function export.node_to_string(node)
         if type(v) == "boolean" then
             if v then html = html .. " " .. k end
         else
-            html = html .. " " .. k .. "=\"" .. export.sanitize_attributes(v) .. "\""
+            html = html .. " " .. k .. "=\"" .. export.sanitize_attributes(tostring(v)) .. "\""
         end
     end
 
@@ -81,90 +88,84 @@ function export.node_to_string(node)
     return html
 end
 
----@generic T
----@param fn T
----@return T
-function export.declare_xml_generator(fn)
-    local tbl = setmetatable({}, {
-        ---@param self table
-        ---@param tag_name string
-        __index = function(self, tag_name)
-            ---@param attributes { [string] : string, [integer] : (XML.Node | string | fun(): XML.Node) } | string
-            ---@return table | fun(children: (XML.Node | string | fun(): XML.Node)[]): XML.Node
-            return function(attributes)
-                ---@type XML.Node
-                local node = {
-                    tag = tag_name,
-                    children = {},
-                    attributes = {}
-                }
+---@class XML.GeneratorTable
+---@field [string] fun(attributes: XML.AttributeTable | string | XML.Node): XML.Node
 
-                --if we have a situation such as
-                --[[
-                    tag "string"
-                ]]
-                   --
-                --then the content is the `string`
-                local tname = typename(attributes)
-                if tname ~= "table" and tname ~= "HTML.Node" then
-                    node.attributes = attributes and { tostring(attributes) } or {}
-                elseif tname == "XML.Node" then
-                    ---local tag = div { p "hi" }
-                    ---div(tag)
-                    node.children = { attributes }
-                    attributes = {}
-                else
-                    node.attributes = attributes --[[@as any]]
-                end
+---@type XML.GeneratorTable
+export.generator_metatable = setmetatable({}, {
+    ---@param self XML.GeneratorTable
+    ---@param tag_name string
+    __index = function(self, tag_name)
+        ---@param attributes { [string] : string, [integer] : (XML.Node | string | fun(): XML.Node) } | string
+        ---@return table | fun(children: (XML.Node | string | fun(): XML.Node)[]): XML.Node
+        return function(attributes)
+            ---@type XML.Node
+            local node = {
+                tag = tag_name,
+                children = {},
+                attributes = {}
+            }
 
-                for i, v in ipairs(node.attributes) do
-                    if type(v) == "function" then
-                        export.declare_xml_generator(v)
-                        v = coroutine.wrap(v)
-                        for sub in v do
-                            node.children[#node.children + 1] = sub
-                        end
-                    else
-                        node.children[#node.children + 1] = v
-                    end
-
-                    node.attributes[i] = nil
-                end
-
-                return setmetatable(node, {
-                    __type = "XML.Node",
-
-                    __tostring = export.node_to_string,
-
-                    ---@param self XML.Node
-                    ---@param children (XML.Node | string | fun(): XML.Node)[]
-                    __call = function(self, children)
-                        if type(children) ~= "table" then
-                            children = { tostring(children) }
-                        end
-
-                        for _, v in ipairs(children) do
-                            if type(v) == "function" then
-                                export.declare_xml_generator(v)
-                                v = coroutine.wrap(v)
-                                for sub in v do
-                                    self.children[#self.children + 1] = sub
-                                end
-                            else
-                                self.children[#self.children + 1] = v
-                            end
-                        end
-
-                        return self
-                    end
-                })
+            --if we have a situation such as
+            --[[
+                tag "string"
+            ]]
+               --
+            --then the content is the `string`
+            local tname = typename(attributes)
+            if tname ~= "table" and tname ~= "HTML.Node" then
+                node.attributes = attributes and { tostring(attributes) } or {}
+            elseif tname == "XML.Node" then
+                ---local tag = div { p "hi" }
+                ---div(tag)
+                node.children = { attributes }
+                attributes = {}
+            else
+                node.attributes = attributes --[[@as any]]
             end
-        end
-    })
 
-    setfenv(fn, tbl)
-    return fn
-end
+            for i, v in ipairs(node.attributes) do
+                if type(v) == "function" then
+                    v = coroutine.wrap(v)
+                    for sub in v do
+                        node.children[#node.children + 1] = sub
+                    end
+                else
+                    node.children[#node.children + 1] = v
+                end
+
+                node.attributes[i] = nil
+            end
+
+            return setmetatable(node, {
+                __type = "XML.Node",
+
+                __tostring = export.node_to_string,
+
+                ---@param self XML.Node
+                ---@param children XML.Children
+                __call = function(self, children)
+                    if type(children) ~= "table" then
+                        children = { tostring(children) }
+                    end
+
+                    for _, v in ipairs(children) do
+                        if type(v) == "function" then
+                            v = coroutine.wrap(v)
+                            for sub in v do
+                                self.children[#self.children + 1] = sub
+                            end
+                        else
+                            self.children[#self.children + 1] = v
+                        end
+                    end
+
+                    return self
+                end
+            })
+        end
+    end
+})
 
 ---Usage:
 --[=[
@@ -188,37 +189,34 @@ end)
 
 ```
 ]=]
----@param ctx fun(): table
----@return string
-function export.generate_xml(ctx)
-    return export.node_to_string(export.declare_xml_generator(ctx)())
-end
-
----@param ctx fun(): table
+---@param ctx fun(html: XML.GeneratorTable): XML.Node
 ---@return XML.Node
-function export.generate_xml_node(ctx)
-    return export.declare_xml_generator(ctx)()
-end
+function export.generate_node(ctx) return ctx(export.generator_metatable) end
+
+---@param ctx fun(html: XML.GeneratorTable): table
+---@return string
+function export.generate(ctx) return tostring(export.generate_node(ctx)) end
 
 ---Turns a lua table into an html table, recursively, with multiple levels of nesting
+---@param xml XML.GeneratorTable
 ---@param tbl table
 ---@return XML.Node
-function export.table(tbl)
+function export.html_table(xml, tbl)
     ---@diagnostic disable: undefined-global
-    return table {
+    return xml.table {
         function()
             local function getval(v)
                 if type(v) ~= "table" or (getmetatable(v) or {}).__tostring then
                     return tostring(v)
                 end
-                return html_table(v)
+                return export.html_table(xml, v)
             end
 
             for i, v in ipairs(tbl) do
-                yield(
-                    tr {
-                        td(tostring(i)),
-                        td(getval(v)),
+                coroutine.yield (
+                    xml.tr {
+                        xml.td(tostring(i)),
+                        xml.td(getval(v)),
                     }
                 )
 
@@ -226,10 +224,10 @@ function export.table(tbl)
             end
 
             for k, v in pairs(tbl) do
-                yield(
-                    tr {
-                        td(tostring(k)),
-                        td(getval(v)),
+                coroutine.yield (
+                    xml.tr {
+                        xml.td(tostring(k)),
+                        xml.td(getval(v)),
                     }
                 )
             end
@@ -237,8 +235,6 @@ function export.table(tbl)
     }
     ---@diagnostic enable: undefined-global
 end
-
-export.declare_xml_generator(export.table)
 
 ---@alias OptionalStringCollection string | string[]
 ---@param css { [OptionalStringCollection] : { [OptionalStringCollection] : (OptionalStringCollection) } }
@@ -257,11 +253,7 @@ function export.style(css)
         css_str = css_str .. "}\n"
     end
 
-    return export.generate_xml_node(function()
-        ---@diagnostic disable: undefined-global
-        return style(css_str)
-        ---@diagnostic enable: undefined-global
-    end)
+    return export.generate_node(function(xml) return xml.style(css_str) end)
 end
 
 return export

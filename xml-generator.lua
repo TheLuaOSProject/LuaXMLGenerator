@@ -110,7 +110,7 @@ export.generator_metatable = setmetatable({}, {
             --[[
                 tag "string"
             ]]
-               --
+            --
             --then the content is the `string`
             local tname = typename(attributes)
             if tname ~= "table" and tname ~= "HTML.Node" then
@@ -198,42 +198,41 @@ function export.generate_node(ctx) return ctx(export.generator_metatable) end
 function export.generate(ctx) return tostring(export.generate_node(ctx)) end
 
 ---Turns a lua table into an html table, recursively, with multiple levels of nesting
----@param xml XML.GeneratorTable
 ---@param tbl table
 ---@return XML.Node
-function export.html_table(xml, tbl)
-    ---@diagnostic disable: undefined-global
-    return xml.table {
-        function()
-            local function getval(v)
-                if type(v) ~= "table" or (getmetatable(v) or {}).__tostring then
-                    return tostring(v)
+function export.html_table(tbl)
+    return export.generate_node(function(xml)
+        return xml.table {
+            function()
+                local function getval(v)
+                    if type(v) ~= "table" or (getmetatable(v) or {}).__tostring then
+                        return tostring(v)
+                    end
+                    return export.html_table(v)
                 end
-                return export.html_table(xml, v)
-            end
 
-            for i, v in ipairs(tbl) do
-                coroutine.yield (
-                    xml.tr {
-                        xml.td(tostring(i)),
-                        xml.td(getval(v)),
-                    }
-                )
+                for i, v in ipairs(tbl) do
+                    coroutine.yield(
+                        xml.tr {
+                            xml.td(tostring(i)),
+                            xml.td(getval(v)),
+                        }
+                    )
 
-                tbl[i] = nil
-            end
+                    tbl[i] = nil
+                end
 
-            for k, v in pairs(tbl) do
-                coroutine.yield (
-                    xml.tr {
-                        xml.td(tostring(k)),
-                        xml.td(getval(v)),
-                    }
-                )
+                for k, v in pairs(tbl) do
+                    coroutine.yield(
+                        xml.tr {
+                            xml.td(tostring(k)),
+                            xml.td(getval(v)),
+                        }
+                    )
+                end
             end
-        end
-    }
-    ---@diagnostic enable: undefined-global
+        }
+    end)
 end
 
 ---@alias OptionalStringCollection string | string[]

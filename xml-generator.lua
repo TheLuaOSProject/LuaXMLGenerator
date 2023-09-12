@@ -53,8 +53,8 @@ end
 ---@return type | string
 local function typename(x)
     local mt = getmetatable(x)
-    if mt and mt.__type then
-        return mt.__type
+    if mt and mt.__name then
+        return mt.__name
     else
         return type(x)
     end
@@ -138,7 +138,7 @@ export.generator_metatable = setmetatable({}, {
             end
 
             return setmetatable(node, {
-                __type = "XML.Node",
+                __name = "XML.Node",
 
                 __tostring = export.node_to_string,
 
@@ -193,6 +193,11 @@ end)
 ---@return XML.Node
 function export.generate_node(ctx) return ctx(export.generator_metatable) end
 
+---@generic T
+---@param func fun(...: T): XML.Node
+---@return fun(...: T): XML.Node
+function export.declare_generator(func) return setfenv(func, table) end
+
 ---@param ctx fun(html: XML.GeneratorTable): table
 ---@return string
 function export.generate(ctx) return tostring(export.generate_node(ctx)) end
@@ -203,16 +208,17 @@ function export.generate(ctx) return tostring(export.generate_node(ctx)) end
 function export.html_table(tbl)
     return export.generate_node(function(xml)
         return xml.table {
-            function()
+            function ()
                 local function getval(v)
-                    if type(v) ~= "table" or (getmetatable(v) or {}).__tostring then
+                    if typename(v) ~= "table" and (typename(v) ~= "XML.Node" and (getmetatable(v) or {}).__tostring ~= nil) then
                         return tostring(v)
                     end
+
                     return export.html_table(v)
                 end
 
                 for i, v in ipairs(tbl) do
-                    coroutine.yield(
+                    coroutine.yield (
                         xml.tr {
                             xml.td(tostring(i)),
                             xml.td(getval(v)),
@@ -223,7 +229,7 @@ function export.html_table(tbl)
                 end
 
                 for k, v in pairs(tbl) do
-                    coroutine.yield(
+                    coroutine.yield (
                         xml.tr {
                             xml.td(tostring(k)),
                             xml.td(getval(v)),

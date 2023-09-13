@@ -93,9 +93,9 @@ end
 
 ---@type XML.GeneratorTable
 export.generator_metatable = setmetatable({}, {
-    ---@param self XML.GeneratorTable
+    ---@param _ XML.GeneratorTable
     ---@param tag_name string
-    __index = function(self, tag_name)
+    __index = function(_, tag_name)
         ---@param attributes { [string] : string, [integer] : (XML.Node | string | fun(): XML.Node) } | string
         ---@return table | fun(children: (XML.Node | string | fun(): XML.Node)[]): XML.Node
         return function(attributes)
@@ -107,19 +107,21 @@ export.generator_metatable = setmetatable({}, {
             }
 
             --if we have a situation such as
-            --[[
-                tag "string"
-            ]]
+            ---```lua
+            ---tag "string"
+            ---```
             --
             --then the content is the `string`
             local tname = typename(attributes)
-            if tname ~= "table" and tname ~= "HTML.Node" then
+            if tname ~= "table" and tname ~= "XML.Node" then
                 node.attributes = attributes and { tostring(attributes) } or {}
             elseif tname == "XML.Node" then
+
+                ---```lua
                 ---local tag = div { p "hi" }
                 ---div(tag)
+                ---```
                 node.children = { attributes }
-                attributes = {}
             else
                 node.attributes = attributes --[[@as any]]
             end
@@ -210,7 +212,10 @@ function export.html_table(tbl)
         return xml.table {
             function ()
                 local function getval(v)
-                    if typename(v) ~= "table" and (typename(v) ~= "XML.Node" and (getmetatable(v) or {}).__tostring ~= nil) then
+                    local tname = typename(v)
+                    if tname == "XML.Node" then return v end
+
+                    if typename(v) ~= "table" or (getmetatable(v) or {}).__tostring then
                         return tostring(v)
                     end
 

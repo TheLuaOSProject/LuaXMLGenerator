@@ -18,16 +18,18 @@ end
 
 
 ---@class xml-generator
-local export = {}
+local export = {
+    sanitize_style = false
+}
 
 ---@class XML.Children
----@field [integer] XML.Node | string | fun(): XML.Node
+---@field [integer] XML.Node | string
 
 ---@class XML.AttributeTable : XML.Children
 ---@field [string] string | boolean | number
 
 ---@class XML.Node
----@operator call(XML.Children): XML.Node
+---@operator call(XML.AttributeTable): XML.Node
 ---@field tag string
 ---@field children XML.Children
 ---@field attributes XML.AttributeTable
@@ -50,8 +52,8 @@ function export.sanitize_attributes(str)
 end
 
 ---@param x any
----@return type | string
-local function typename(x)
+---@return type | "XML.Node" | string
+function export.typename(x)
     local mt = getmetatable(x)
     if mt and mt.__name then
         return mt.__name
@@ -59,115 +61,90 @@ local function typename(x)
         return type(x)
     end
 end
+local typename = export.typename
 
 ---@param node XML.Node
 ---@return string
 function export.node_to_string(node)
-    local html = "<" .. node.tag
+    local sanitize = (not export.sanitize_style) and node.tag ~= "style"
+    local sanitize_text = sanitize and export.sanitize_text or function (...) return ... end
+
+    local html = "<"..node.tag
 
     for k, v in pairs(node.attributes) do
         if type(v) == "boolean" then
-            if v then html = html .. " " .. k end
+            if v then html = html.." "..k end
         else
-            html = html .. " " .. k .. "=\"" .. export.sanitize_attributes(tostring(v)) .. "\""
+            html = html.." "..k.."=\""..export.sanitize_attributes(tostring(v)).."\""
         end
     end
 
-    html = html .. ">"
+    html = html..">"
 
     for i, v in ipairs(node.children) do
         if type(v) ~= "table" then
-            html = html .. export.sanitize_text(tostring(v))
+            html = html..sanitize_text(tostring(v))
         else
-            html = html .. export.node_to_string(v)
+            html = html..export.node_to_string(v)
         end
     end
 
-    html = html .. "</" .. node.tag .. ">"
+    html = html.."</"..node.tag..">"
 
     return html
 end
 
 ---@class XML.GeneratorTable
----@field [string] fun(attributes: XML.AttributeTable | string | XML.Node): XML.Node
+---@field lua _G
+---@field [string] XML.Node
 
 ---@type XML.GeneratorTable
 export.generator_metatable = setmetatable({}, {
     ---@param _ XML.GeneratorTable
     ---@param tag_name string
     __index = function(_, tag_name)
-        ---@param attributes { [string] : string, [integer] : (XML.Node | string | fun(): XML.Node) } | string
-        ---@return table | fun(children: (XML.Node | string | fun(): XML.Node)[]): XML.Node
-        return function(attributes)
-            ---@type XML.Node
-            local node = {
-                tag = tag_name,
-                children = {},
-                attributes = {}
-            }
+        --When used
+        if tag_name == "lua" then return _G end
 
-            --if we have a situation such as
-            ---```lua
-            ---tag "string"
-            ---```
-            --
-            --then the content is the `string`
-            local tname = typename(attributes)
-            if tname ~= "table" and tname ~= "XML.Node" then
-                node.attributes = attributes and { tostring(attributes) } or {}
-            elseif tname == "XML.Node" then
-
-                ---```lua
-                ---local tag = div { p "hi" }
-                ---div(tag)
-                ---```
-                node.children = { attributes }
-            else
-                node.attributes = attributes --[[@as any]]
-            end
-
-            for i, v in ipairs(node.attributes) do
-                if type(v) == "function" then
-                    v = coroutine.wrap(v)
-                    for sub in v do
-                        node.children[#node.children + 1] = sub
-                    end
-                else
-                    node.children[#node.children + 1] = v
-                end
-
-                node.attributes[i] = nil
-            end
-
-            return setmetatable(node, {
-                __name = "XML.Node",
-
-                __tostring = export.node_to_string,
-
-                ---@param self XML.Node
-                ---@param children XML.Children
-                __call = function(self, children)
-                    if type(children) ~= "table" then
-                        children = { tostring(children) }
-                    end
-
-                    for _, v in ipairs(children) do
-                        if type(v) == "function" then
+        ---@type XML.Node
+        local node = {
+            tag = tag_name,
+            children = {},
+            attributes = {}
+        }
+        return setmetatable(node, {
+            ---@param self XML.Node
+            ---@param attribs XML.AttributeTable | string | XML.Node
+            ---@return XML.Node
+            __call = function (self, attribs)
+                local tname = typename(attribs)
+                if tname == "table" then
+                    for i, v in ipairs(attribs --[[@as (string | XML.Node | fun(): XML.Node)[] ]]) do
+                        local tname = typename(v)
+                        if tname == "function" then
+                            ---@type fun(): XML.Node | string
                             v = coroutine.wrap(v)
-                            for sub in v do
-                                self.children[#self.children + 1] = sub
-                            end
+                            for elem in v do self.children[#self.children+1] = elem end
                         else
-                            self.children[#self.children + 1] = v
+                            self.children[#self.children+1] = v
                         end
+
+                        attribs[i] = nil
                     end
 
-                    return self
-                end
-            })
-        end
+                    for key, value in pairs(attribs --[[@as { [string] : string | boolean | number }]]) do
+                        self.attributes[key] = value
+                    end
+                else self.children[#self.children+1] = tname == "XML.Node" and attribs or tostring(attribs) end
+
+                return self
+            end;
+
+            __tostring = export.node_to_string
+        })
     end
 })
+
 
 ---Usage:
 --[=[
@@ -198,7 +175,7 @@ function export.generate_node(ctx) return ctx(export.generator_metatable) end
 ---@generic T
 ---@param func fun(...: T): XML.Node
 ---@return fun(...: T): XML.Node
-function export.declare_generator(func) return setfenv(func, table) end
+function export.declare_generator(func) return setfenv(func, export.generator_metatable) end
 
 ---@param ctx fun(html: XML.GeneratorTable): table
 ---@return string
@@ -254,16 +231,17 @@ function export.style(css)
     for selector, properties in pairs(css) do
         if type(selector) == "table" then selector = table.concat(selector, ", ") end
 
-        css_str = css_str .. selector .. " {\n"
+        css_str = css_str..selector.." {\n"
         for property, value in pairs(properties) do
             if type(value) == "table" then value = table.concat(value, ", ") end
 
-            css_str = css_str .. "    " .. property .. ": " .. value .. ";\n"
+            css_str = css_str.."    "..property..": "..value..";\n"
         end
-        css_str = css_str .. "}\n"
+        css_str = css_str.."}\n"
     end
 
     return export.generate_node(function(xml) return xml.style(css_str) end)
 end
+
 
 return export

@@ -99,7 +99,7 @@ end
 ---@field [string] XML.Node
 
 ---@type XML.GeneratorTable
-export.generator_metatable = setmetatable({}, {
+export.xml = setmetatable({}, {
     ---@param _ XML.GeneratorTable
     ---@param tag_name string
     __index = function(_, tag_name)
@@ -140,7 +140,9 @@ export.generator_metatable = setmetatable({}, {
                 return self
             end;
 
-            __tostring = export.node_to_string
+            __tostring = export.node_to_string;
+
+            __name = "XML.Node";
         })
     end
 })
@@ -168,59 +170,51 @@ end)
 
 ```
 ]=]
----@param ctx fun(html: XML.GeneratorTable): XML.Node
----@return XML.Node
-function export.generate_node(ctx) return ctx(export.generator_metatable) end
 
 ---@generic T
 ---@param func fun(...: T): XML.Node
 ---@return fun(...: T): XML.Node
-function export.declare_generator(func) return setfenv(func, export.generator_metatable) end
-
----@param ctx fun(html: XML.GeneratorTable): table
----@return string
-function export.generate(ctx) return tostring(export.generate_node(ctx)) end
+function export.declare_generator(func) return setfenv(func, export.xml) end
 
 ---Turns a lua table into an html table, recursively, with multiple levels of nesting
 ---@param tbl table
 ---@return XML.Node
 function export.html_table(tbl)
-    return export.generate_node(function(xml)
-        return xml.table {
-            function ()
-                local function getval(v)
-                    local tname = typename(v)
-                    if tname == "XML.Node" then return v end
+    local xml = export.xml
+    return xml.table {
+        function ()
+            local function getval(v)
+                local tname = typename(v)
+                if tname == "XML.Node" then return v end
 
-                    if typename(v) ~= "table" or (getmetatable(v) or {}).__tostring then
-                        return tostring(v)
-                    end
-
-                    return export.html_table(v)
+                if typename(v) ~= "table" or (getmetatable(v) or {}).__tostring then
+                    return tostring(v)
                 end
 
-                for i, v in ipairs(tbl) do
-                    coroutine.yield (
-                        xml.tr {
-                            xml.td(tostring(i)),
-                            xml.td(getval(v)),
-                        }
-                    )
-
-                    tbl[i] = nil
-                end
-
-                for k, v in pairs(tbl) do
-                    coroutine.yield (
-                        xml.tr {
-                            xml.td(tostring(k)),
-                            xml.td(getval(v)),
-                        }
-                    )
-                end
+                return export.html_table(v)
             end
-        }
-    end)
+
+            for i, v in ipairs(tbl) do
+                coroutine.yield (
+                    xml.tr {
+                        xml.td(tostring(i)),
+                        xml.td(getval(v)),
+                    }
+                )
+
+                tbl[i] = nil
+            end
+
+            for k, v in pairs(tbl) do
+                coroutine.yield (
+                    xml.tr {
+                        xml.td(tostring(k)),
+                        xml.td(getval(v)),
+                    }
+                )
+            end
+        end
+    }
 end
 
 ---@alias OptionalStringCollection string | string[]
@@ -240,7 +234,7 @@ function export.style(css)
         css_str = css_str.."}\n"
     end
 
-    return export.generate_node(function(xml) return xml.style(css_str) end)
+    return export.xml.style(css_str)
 end
 
 

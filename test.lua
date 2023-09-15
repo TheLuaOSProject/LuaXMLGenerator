@@ -103,31 +103,30 @@ details > div {
 
 ]]
 
+local xml = xml_gen.xml
 
-local doc = xml_gen.generate(function (xml)
-    return xml.html {charset="utf8"} {
-        xml.head {
-            xml.title "Hello, World!";
-            xml_gen.style {
-                ["details > div"] = {
-                    ["margin-left"] = "10px"
-                }
+local doc = xml.html {charset="utf8"} {
+    xml.head {
+        xml.title "Hello, World!";
+        xml_gen.style {
+            ["details > div"] = {
+                ["margin-left"] = "10px"
             }
-        };
+        }
+    };
 
-        xml.body {
-            xml.div {id="numbers"} {
-                tree {
-                    key = "value";
-                    sub = {
-                        key = "value"
-                    };
+    xml.body {
+        xml.div {id="numbers"} {
+            tree {
+                key = "value";
+                sub = {
+                    key = "value"
+                };
 
-                    array = { 1, 2, 3, 4, 5 }
-                }
+                array = { 1, 2, 3, 4, 5 }
             }
         }
     }
-end)
+}
 
 print(doc)

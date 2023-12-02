@@ -168,10 +168,12 @@ function export.declare_generator(func) return setfenv(func, export.xml) end
 ---@generic TKey, TValue
 ---@param tbl { [TKey] : TValue },
 ---@param order TKey[]?
+---@param classes { table: string?, tr: string?, td: string? }?
 ---@return XML.Node
-function export.html_table(tbl, order)
+function export.html_table(tbl, order, classes)
+    local classes = classes or {}
     local xml = export.xml
-    return xml.table {
+    return xml.table {class=classes.table} {
         function ()
             local function getval(v)
                 local tname = typename(v)
@@ -188,18 +190,18 @@ function export.html_table(tbl, order)
                 for i, v in ipairs(order) do
                     local val = tbl[v]
                     coroutine.yield (
-                        xml.tr {
-                            xml.td(tostring(v)),
-                            xml.td(getval(val))
+                        xml.tr {class=classes.table} {
+                            xml.td {class=classes.td} (tostring(v)),
+                            xml.td {class=classes.td} (getval(val))
                         }
                     )
                 end
             else
                 for i, v in ipairs(tbl) do
                     coroutine.yield (
-                        xml.tr {
-                            xml.td(tostring(i)),
-                            xml.td(getval(v)),
+                        xml.tr {class=classes.tr} {
+                            xml.td {class=classes.td} (tostring(i)),
+                            xml.td {class=classes.td} (getval(v)),
                         }
                     )
 
@@ -208,9 +210,9 @@ function export.html_table(tbl, order)
 
                 for k, v in pairs(tbl) do
                     coroutine.yield (
-                        xml.tr {
-                            xml.td(tostring(k)),
-                            xml.td(getval(v)),
+                        xml.tr {class=classes.tr} {
+                            xml.td {class=classes.td} (tostring(k)),
+                            xml.td {class=classes.td} (getval(v)),
                         }
                     )
                 end
@@ -220,8 +222,7 @@ function export.html_table(tbl, order)
 end
 
 ---Creates a style tag with the given lua table
----@alias OptionalStringCollection string | string[]
----@param css { [OptionalStringCollection] : { [OptionalStringCollection] : (OptionalStringCollection) } }
+---@param css { [string | string[]] : { [string | string[]] : (number | string | string[]) } }
 ---@return XML.Node
 function export.style(css)
     local css_str = ""

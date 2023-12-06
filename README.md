@@ -5,7 +5,7 @@ Library to easily generate XML with a clean Lua DSL.
 ## Installation
 
 ```bash
-luarocks insatll luaxmlgenerator
+luarocks install luaxmlgenerator
 ```
 
 ## Usage
@@ -71,6 +71,49 @@ local gen = xml_gen.declare_generator(function()
 end)
 
 print(gen())
+```
+
+## Components
+
+Using `xml_gen.component` you can create your own components. Here is an example of a `random_number` component
+```lua
+---@param context fun(args: { [string] : any }, children: XML.Children): XML.Node?
+---@return XML.Component
+function export.component(context)
+```
+
+```lua
+local xml_gen = require("xml-generator")
+local xml = xml_gen.xml
+
+math.randomseed(os.time())
+
+local random_number = xml_gen.component(function(args, children)
+    local min = args.min or 0
+    --remove these from the args so they dont show up in our HTML attributes later
+    args.min = nil
+    local max = args.max or 100
+    args.max = nil
+
+    coroutine.yield(xml.p "This is a valid coroutine too!")
+
+    return xml.span(args) {
+        math.random(min, max),
+        children --children is a table of all the children passed to the component, this may be empty
+    }
+end)
+
+local doc = xml.html {
+    xml.body {
+        random_number {min = 0, max = 100};
+        random_number {max=10} {
+            xml.p "This is inside the span!"
+        };
+        random_number;
+    }
+}
+
+print(doc)
 ```
 
 ## Utilities
@@ -144,3 +187,52 @@ local style = xml_gen.style {
 
 print(style)
 ```
+
+## API
+
+You do not need to generate XML with this library, instead, you can use an `XML.Node` as its own object.
+
+```lua
+---@class XML.Children
+---@field [integer] XML.Node | string | fun(): XML.Node
+
+---@class XML.AttributeTable : XML.Children
+---@field [string] string | boolean | number
+
+---@class XML.Node
+---@operator call(XML.AttributeTable): XML.Node
+---@field tag string
+---@field children XML.Children
+---@field attributes XML.AttributeTable
+
+---@class XML.Component : XML.Node
+---@field attributes { [string] : any } The attributes can be any type for `component`s, but not for `node`s
+---@field context fun(args: { [string] : any }, children: XML.Children): XML.Node?
+
+```
+
+### `XML.Node`
+
+```lua
+local xml_gen = require("xml-generator")
+local xml = xml_gen.xml
+
+local my_node = xml.div {id="my-div"} {
+    xml.p {id="p-1"} "Hello World";
+    xml.p {id="p-2"} "Hello World";
+    xml.p {id="p-3"} "Hello World";
+}
+
+print(my_node.tag) --div
+print(my_node.attributes.id) --my-div
+
+for i, child in ipairs(my_node.children) do
+    print(i, child.tag, child.attributes.id)
+end
+
+print(my_node)
+```
+
+`attributes` and `children` can be empty, but will never be `nil`.
+
+`tag` will be `nil` if the node is a `component`.

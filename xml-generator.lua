@@ -17,6 +17,47 @@ local setfenv = setfenv or function(fn, env)
     return fn
 end
 
+---@generic T: table
+---@param x T
+---@param copy_metatable boolean?
+---@return T
+local function deep_copy(x, copy_metatable)
+    local tname = type(x)
+    if tname == "table" then
+        local new = {}
+        for k, v in pairs(x) do
+            new[k] = deep_copy(v)
+        end
+
+        if copy_metatable then setmetatable(new, getmetatable(x)) end
+
+        return new
+    else return x end
+end
+
+---@param x table
+---@return metatable
+local function metatable(x)
+    local mt = getmetatable(x) or {}
+    setmetatable(x, mt)
+    return mt
+end
+
+---@generic T
+---@param x T[]
+---@return T[]
+local function stringable_array(x)
+    metatable(x).__tostring = function (self)
+        local parts = {}
+        for i, v in ipairs(self) do
+            parts[i] = tostring(v)
+        end
+
+        return table.concat(parts)
+    end
+
+    return x
+end
 
 ---@class xml-generator
 local export = {
@@ -30,16 +71,16 @@ local export = {
 }
 
 ---@class XML.Children
----@field [integer] XML.Node | string
+---@field [integer] XML.Node | string | fun(): XML.Node
 
 ---@class XML.AttributeTable : XML.Children
 ---@field [string] string | boolean | number
 
 ---@class XML.Node
 ---@operator call(XML.AttributeTable): XML.Node
----@field private tag string
----@field private children XML.Children
----@field private attributes XML.AttributeTable
+---@field tag string
+---@field children XML.Children
+---@field attributes XML.AttributeTable
 
 ---quotes are allowed in text, not in attributes
 ---@param str string
@@ -92,11 +133,16 @@ function export.node_to_string(node)
 
     insert(parts, ">")
 
-    for _, v in ipairs(node.children) do
-        if type(v) ~= "table" then
-            insert(parts, sanitize_text(tostring(v)))
+    for i, v in ipairs(node.children) do
+        if type(v) == "table" then
+            insert(parts, tostring(v))
+        elseif type(v) == "function" then
+            local f = coroutine.wrap(v)
+            for elem in f do
+                insert(parts, export.node_to_string(elem))
+            end
         else
-            insert(parts, export.node_to_string(v))
+            insert(parts, sanitize_text(tostring(v)))
         end
     end
 
@@ -105,6 +151,52 @@ function export.node_to_string(node)
     return concat(parts)
 end
 
+---@overload fun(tag_name: "lua", attributes: XML.AttributeTable?, children: XML.Children?): _G
+---@param tag_name string
+---@param attributes XML.AttributeTable?
+---@param children XML.Children?
+---@return XML.Node
+function export.create_node(tag_name, attributes, children)
+    if tag_name == "lua" and export.lua_is_global then return _G end
+
+    ---@type XML.Node
+    local node = {
+        tag = tag_name,
+        children = children or {},
+        attributes = attributes or {},
+    }
+    return setmetatable(node, {
+
+        ---@param self XML.Node
+        ---@param attribs XML.AttributeTable | string | XML.Node
+        ---@return XML.Node
+        __call = function (self, attribs)
+            local new = export.create_node(self.tag, deep_copy(self.attributes), deep_copy(self.children)) --[[@as XML.Node]]
+            local tname = typename(attribs)
+            if tname == "table" or tname == "function" then
+                if tname == "table" then
+                    for i, v in ipairs(attribs --[[@as (string | XML.Node | fun(): XML.Node)[] ]]) do
+                        table.insert(new.children, v)
+                        attribs[i] = nil
+                    end
+                    for key, value in pairs(attribs --[[@as { [string] : string | boolean | number }]]) do
+                        new.attributes[key] = value
+                    end
+                else
+                    table.insert(new.children, attribs)
+                end
+            else
+                table.insert(new.children, (tname == "XML.Node" and attribs or tostring(attribs)))
+            end
+
+            return new
+        end;
+
+        __tostring = export.node_to_string;
+
+        __name = "XML.Node";
+    })
+end
 
 ---@class XML.GeneratorTable
 ---@field lua _G
@@ -113,49 +205,7 @@ export.xml = setmetatable({}, {
     ---@param _ XML.GeneratorTable
     ---@param tag_name string
     __index = function(_, tag_name)
-        if tag_name == "lua" and export.lua_is_global then return _G end
-
-        ---@type XML.Node
-        local node = {
-            tag = tag_name,
-            children = {},
-            attributes = {}
-        }
-        return setmetatable(node, {
-
-            ---@param self XML.Node
-            ---@param attribs XML.AttributeTable | string | XML.Node
-            ---@return XML.Node
-            __call = function (self, attribs)
-                local tname = typename(attribs)
-                if tname == "table" then
-                    for i, v in ipairs(attribs --[[@as (string | XML.Node | fun(): XML.Node)[] ]]) do
-                        local tname = typename(v)
-                        if tname == "function" then
-                            ---@type fun(): XML.Node | string
-                            v = coroutine.wrap(v --[[@as function]])
-                            for elem in v do self.children[#self.children+1] = elem end
-                        else
-                            self.children[#self.children+1] = v --[[@as string | XML.Node]]
-                        end
-
-                        attribs[i] = nil
-                    end
-
-                    for key, value in pairs(attribs --[[@as { [string] : string | boolean | number }]]) do
-                        self.attributes[key] = value
-                    end
-                else
-                    self.children[#self.children+1] = (tname == "XML.Node" and attribs or tostring(attribs)) --[[@as string | XML.Node]]
-                end
-
-                return self
-            end;
-
-            __tostring = export.node_to_string;
-
-            __name = "XML.Node";
-        })
+        return export.create_node(tag_name)
     end
 })
 
@@ -241,5 +291,77 @@ function export.style(css)
     return export.xml.style(css_str)
 end
 
+---@class XML.Component : XML.Node
+---@field attributes { [string] : any } The attributes can be any type for `component`s, but not for `node`s
+---@field context fun(args: { [string] : any }, children: XML.Children?): XML.Node?
+
+--[[
+```lua
+local xml_generator = require("xml-generator")
+local xml = xml_generator.xml
+
+local my_component = xml_generator.component(function(args, children)
+    local number = args.number + 10
+
+    coroutine.yield(xml.div {
+        xml.h1 "Hello, World!";
+        xml.p("Number: "..number);
+        children;
+    })
+end)
+
+print(my_component {number=1}{
+    xml.p "This is a child"
+})
+```
+]]
+---@param context fun(args: { [string] : any }, children: XML.Children): XML.Node?
+---@return XML.Component
+function export.component(context)
+    local component_name = debug.getinfo(context).name
+    return setmetatable({ attributes = {}, children = stringable_array {}, context = context }, {
+        ---@param self XML.Component
+        ---@param args { [string] : any, [integer] : XML.Children }
+        __call = function (self, args)
+            ---@type XML.Component
+            local new = setmetatable({
+                attributes = deep_copy(self.attributes),
+                children = deep_copy(self.children or stringable_array {}, true),
+                context = self.context
+            }, getmetatable(self))
+
+            for k, v in pairs(args) do
+                if type(k) == "number" then
+                    table.insert(new.children, v)
+                else
+                    new.attributes[k] = v
+                end
+            end
+
+            return new
+        end;
+
+        ---@param self XML.Component
+        __tostring = function (self)
+            local f = coroutine.create(self.context)
+            ---@type XML.Node[]
+            local arr = stringable_array {}
+            local ok, res = coroutine.resume(f, self.attributes, self.children)
+            if not ok then error(res) end
+            table.insert(arr, res)
+
+            if coroutine.status(f) ~= "dead" then
+                repeat
+                    ok, res = coroutine.resume(f)
+                    if not ok then error(res) end
+                    table.insert(arr, res)
+                until coroutine.status(f) == "dead"
+            end
+
+            return tostring(arr)
+        end;
+        __name = "XML.Component";
+    })
+end
 
 return export

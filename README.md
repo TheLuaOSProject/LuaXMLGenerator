@@ -43,11 +43,9 @@ Table of tags that should not be sanitized. By default, it contains `script` and
 local xml_gen = require("xml-generator")
 xml_gen.no_sanitize["mytag"] = true
 
-local doc = xml_gen.xml {
-    xml.mytag [[
+local doc = xml_gen.xml.mytag [[
         Thsi will not be sanitized! <><><><><><%%%<>%<>%<>% you can use all of this!
-    ]]
-}
+]]
 
 ```
 

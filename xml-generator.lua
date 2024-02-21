@@ -322,4 +322,9 @@ function export.namespace(ns, sep)
     })
 end
 
+---WILL NOT BE SANITIZED
+---@param ... string
+---@return string[]
+function export.raw(...) return stringable_array { ... } end
+
 return export

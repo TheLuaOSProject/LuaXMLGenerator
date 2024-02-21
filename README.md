@@ -126,37 +126,6 @@ function export.declare_generator(func)
 
 Allows you to create a function in which the `_ENV` is overloaded with the `xml` table. This allows you to write XML more concisely (see example above).
 
-### `xml_gen.html_table`
-```lua
----@generic TKey, TValue
----@param tbl { [TKey] : TValue },
----@param order TKey[]?
----@param classes { table: string?, tr: string?, td: string? }?
----@return XML.Node
-function export.html_table(tbl, order, classes)
-```
-
-Creates an HTML table based off a lua table. This is unstyled, so you will need to add your own CSS.
-
-```lua
-
-local my_table = {
-    key = "value",
-    sub = {
-        key = "value",
-    }
-}
-
-local tbl = xml_gen.html_table(my_table, { "key", "sub" }, {
-    table = "my-table",
-    tr = "my-table-row",
-    td = "my-table-cell",
-})
-
-print(tbl)
-
-```
-
 ### `xml_gen.style`
 ```lua
 ---@param css { [string | string[]] : { [string | string[]] : (number | string | string[]) } }
@@ -185,6 +154,18 @@ local style = xml_gen.style {
 
 print(style)
 ```
+
+### `xml_gen.raw`
+```lua
+---WILL NOT BE SANITIZED
+---@param ... string
+---@return string[]
+function export.raw(...) end
+```
+
+Inserts raw (NOT SANITIZED) strings into the document.
+
+```lua
 
 ## API
 

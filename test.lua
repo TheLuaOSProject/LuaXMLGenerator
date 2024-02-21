@@ -15,40 +15,13 @@ local doc = xml.html {charset="utf-8", lang="en"} {
                 end
             end
         }
-    }
+    };
+
+    xml_gen.raw [[
+        <script>
+            console.log("Hello, World!");
+        </script>
+    ]]
 }
 
 print(doc)
-
--- local my_table = {
---     key = "value",
---     sub = {
---         key = "value",
---     }
--- }
-
--- local tbl = xml_gen.html_table(my_table, { "key", "sub" }, {
---     table = "my-table",
---     tr = "my-table-row",
---     td = "my-table-cell",
--- })
-
--- print(tbl)
-
--- local xml_gen = require("xml-generator")
-
--- local style = xml_gen.style {
---     [{ "body", "html" }] = {
---         margin = 0,
---         padding = 0,
---     },
-
---     body = {
---         background = "#000",
---         color = "#fff",
---     }
-
---     --etc
--- }
-
--- print(style)

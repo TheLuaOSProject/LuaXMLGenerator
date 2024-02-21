@@ -3,29 +3,36 @@ local xml = xml_gen.xml
 
 math.randomseed(os.time())
 
-local random_number = xml_gen.component(function(args, children)
-    local min = args.min or 0
-    local max = args.max or 100
-    --remove these from the args so they dont show up in our HTML attributes later
-    args.min = nil
-    args.max = nil
-
-    coroutine.yield(xml.p"This is a valid coroutine too!")
-
-    return xml.span(args) {
-        math.random(min, max),
-        children --children is a table of all the children passed to the component, this may be empty
+local header = xml_gen.component(function (args, kids)
+    return xml.head {
+        xml.title {args.title};
+        xml.meta {
+            name="viewport",
+            content="width=device-width, initial-scale=1"
+        };
+        kids;
+        args.css_framework;
     }
 end)
 
-local doc = xml.html {
+local tw = xml_gen.namespace "tw"
+
+local doc = xml.html {charset="utf8"} {
+    header {title="Hello, World!", css_framework=xml.link {rel="stylesheet", href="..."}} {
+        xml.script {src="index.lua"};
+        xml.br;
+    };
+
     xml.body {
-        random_number {min = 0, max = 100};
-        random_number {max=10} {
-            xml.p "This is inside the span!"
+        xml.h1 {class="text-center"} "Fritsite";
+        xml.main {class="container"} {
+            xml.p "Hello, World!";
+            xml.button {onclick="say_hi()"} "Say Hi!";
         };
-        random_number;
-    }
+
+        tw.div {id="test div"} "hello"
+    };
 }
+
 
 print(doc)

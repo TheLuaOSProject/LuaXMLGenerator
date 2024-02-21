@@ -34,4 +34,7 @@
         "lua_modules/lib/lua/5.1/",
         "lua_modules/share/lua/5.1/",
     ],
+    "runtime.special" : {
+        "typename" : "type",
+    }
 }

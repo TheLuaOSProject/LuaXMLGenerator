@@ -113,9 +113,11 @@ local typename = export.typename
 local insert = table.insert
 local concat = table.concat
 local tostring = tostring
----@param node XML.Node
+---@param node XML.Node | XML.Component
 ---@return string
 function export.node_to_string(node)
+    if typename(node) == "XML.Component" then return tostring(node) end
+
     local sanitize = not export.no_sanitize[node.tag:lower()]
     local sanitize_text = sanitize and export.sanitize_text or function (...) return ... end
 

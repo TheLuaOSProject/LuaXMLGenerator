@@ -3,14 +3,14 @@ local xml = xml_gen.xml
 local tw = xml_gen.namespace "tw"
 math.randomseed(os.time())
 
-local header = xml_gen.component(function (args, kids)
+local header = xml_gen.component(function (args, ...)
     return xml.head {
         xml.title(args.title);
         xml.meta {
             name="viewport",
             content="width=device-width, initial-scale=1"
         };
-        kids;
+        {...};
         args.css_framework;
     }
 end)
@@ -34,7 +34,7 @@ local doc = xml_gen.declare_generator(function ()
             };
 
             function ()
-                for i = 1, 10 do
+                for i = 1, 10000 do
                     yield(random_number {id="rn-"..i} {min=1, max=100})
                 end
             end;

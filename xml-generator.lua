@@ -244,6 +244,37 @@ if has_strbuf then
     end
 end
 
+---Expands all components and functions in a node
+---@param node XML.Node | XML.Component
+---@return XML.Node
+function export.expand_node(node)
+    if typename(node) == "XML.Component" then
+        return export.expand_component(node)
+    end
+
+    local new = export.create_node(node.tag, deep_copy(node.attributes, true)) --[[@as XML.Node]]
+
+    for i, v in ipairs(node.children) do
+        local tname = typename(v)
+        if tname == "XML.Node" then
+            -- new.children[i] = export.expand_node(v)
+            insert(new.children, export.expand_node(v))
+        elseif tname == "function" then
+            local f = coroutine.wrap(v)
+            for elem in f do
+                tname = typename(elem)
+                if tname == "XML.Node" or tname == "XML.Component" then
+                    insert(new.children, export.expand_node(elem))
+                else
+                    insert(new.children, elem)
+                end
+            end
+        end
+    end
+
+    return new
+end
+
 export.node_metatable = {
     ---@param self XML.Node
     ---@param attribs XML.AttributeTable | string | XML.Node
@@ -323,13 +354,33 @@ function export.style(css)
 end
 
 ---@param component XML.Component
+---@return XML.Node[]
+function export.expand_component(component)
+    local f = coroutine.create(component.context)
+
+    ---@type XML.Node[]
+    local arr = stringable_array {}
+    local ok, res = coroutine.resume(f, component.attributes, unpack(component.children))
+    if not ok then error(res) end
+    table.insert(arr, res)
+
+    while coroutine.status(f) ~= "dead" do
+        ok, res = coroutine.resume(f)
+        if not ok then error(res) end
+        table.insert(arr, res)
+    end
+
+    return arr
+end
+
+---@param component XML.Component
 ---@return string
 function export.component_to_string(component)
     local f = coroutine.create(component.context)
 
     ---@type XML.Node[]
     local arr = stringable_array {}
-    local ok, res = coroutine.resume(f, component.attributes, table.unpack(component.children))
+    local ok, res = coroutine.resume(f, component.attributes, unpack(component.children))
     if not ok then error(res) end
     table.insert(arr, res)
 
